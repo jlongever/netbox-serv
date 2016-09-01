@@ -1,5 +1,5 @@
 from settings import *
-from netbox import Configuration, ApiClient
+from netbox_rest import Configuration, ApiClient
 
 config = Configuration()
 config.username = NETBOX_USER

@@ -168,7 +168,4 @@ from .api_client import ApiClient
 
 from .configuration import Configuration
 
-# import custom Netbox class
-from .netbox import Netbox
-
 configuration = Configuration()
