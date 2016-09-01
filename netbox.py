@@ -1,5 +1,4 @@
 from config.netbox_config import *
-from config.settings import *
 from modules.logger import Log
 from modules.worker import WorkerThread, WorkerTasks
 from netbox_rest import ApidcimApi as Dcim
@@ -14,63 +13,94 @@ log = Log(__name__)
 
 class Netbox(object):
     def __init__(self, *args, **kwargs):
+        # create session and login
         self.__session = requests.session()
-        self.__site_info = None
+        self.__base_url = 'http://{0}:{1}'.format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
+        self.__nb_login()
         self.__rack_info = {}
         self.__api_client = config.api_client
-        
-        # session login
-        self.__nb_login()
+        self.__site_info = self.nb_create_site(args[0])
 
     def __get_data(self):
         return json.loads(self.__api_client.last_response.data)
-
+        
+    def __post(self, path, data=None):
+        r = self.__get(path)
+        if isinstance(data, dict):
+            data['csrfmiddlewaretoken'] = r.cookies['csrftoken']
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': r.cookies['csrftoken']
+        }
+        url = '{0}/{1}'.format(self.__base_url, path)
+        r = self.__session.post(url, data=data, headers=headers)
+        r.raise_for_status()
+        return r
+            
+    def __get(self, path):
+        r = self.__session.get('{0}/{1}'.format(self.__base_url, path))
+        r.raise_for_status()
+        return r
+            
     def __nb_login(self):
-        url = 'http://{0}:{1}/login/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url)
         data = {}
         data['username'] = defaults.get('NETBOX_USER')
         data['password'] = defaults.get('NETBOX_PASS')
-        data['csrfmiddlewaretoken'] = r.cookies['csrftoken']
-        headers = {}
-        headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        headers['X-CSRFToken'] = r.cookies['csrftoken']
-        r = self.__session.post(url, data=data, headers=headers)
-        r.raise_for_status()
+        self.__post('/login/', data=data)
 
-    def nb_create_site(self, site_name):
+    def nb_create_site(self, opts):
+        site_name = opts.site
         Dcim().site_list_get()
         for site in self.__get_data():
             if site.get('name') == site_name:
                 log.debug('site ' + site_name + ' exists')
                 return site
-        url = 'http://{0}:{1}/dcim/sites/add/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url)
         site_data = {
-            '_create': '',
-            'asn': '',
-            'comments': '',
-            'facility': '',
-            'physical_address': '',
-            'shipping_address': '',
-            'tenant': '',
             'name': site_name,
-            'slug': site_name,
-            'csrfmiddlewaretoken': r.cookies['csrftoken']
+            'slug': opts.slug if opts.slug != None else site_name,
+            'asn': opts.asn if opts.asn != None else '',
+            'comments': opts.comments if opts.comments != None else '',
+            'facility': opts.facility if opts.facility != None else '',
+            'physical_address': opts.physical if opts.physical != None else '',
+            'shipping_address': opts.shipping if opts.shipping != None else '',
+            'tenant': opts.tenant if opts.tenant != None else '',
         }
         log.info('creating site ' + site_name)
-        r = self.__session.post(url, data=site_data, \
-            headers={'Content-Type': 'application/x-www-form-urlencoded', \
-                     'X-CSRFToken': r.cookies['csrftoken']})
-        r.raise_for_status()
+        self.__post('/dcim/sites/add/', data=site_data)
         Dcim().site_list_get()
         for site in self.__get_data():
             if site.get('name') == site_name:
-                log.debug(site, json=True)
                 self.__site_info = site
+                log.debug(self.__site_info, json=True)
                 return site
+
+    def nb_add_rack(self, rack_srv):
+        rack_name = re.search('uuid:(.*)::', rack_srv.usn).group(1)
+        if rack_name in self.__rack_info:
+            return
+        log.debug('creating rack with location {0}'.format(rack_srv.location))
+        Dcim().rack_list_get_0(self.__site_info.get('id'))
+        add_rack = True
+        for rack in self.__get_data():
+            if rack.get('name') == rack_name:
+                log.debug('rack ' + rack_name + ' exists')
+                add_rack = False
+        if add_rack:
+            rack_info = {
+                'name': rack_name,
+                'u_height': '42',
+                'width': '19',
+                'site': self.__site_info.get('id'), 
+                'comments': 'RackHD Service: \nlocation: {0} \nUSN: {1}' \
+                    .format(rack_srv.location, rack_srv.usn)
+            }
+            log.info('creating rack ' + rack_name)
+            self.__post('/dcim/racks/add/', data=rack_info)
+        Dcim().rack_list_get()
+        for rack in self.__get_data():
+            if rack.get('name') == rack_name:
+                self.__rack_info[rack_name] = rack_srv
+                return rack
 
     def nb_add_device_role(self, role_name):
         colors_map = {
@@ -83,20 +113,13 @@ class Netbox(object):
         for role in self.__get_data():
             if role_name == role.get('name'):
                 return role
-        url = 'http://{0}:{1}/dcim/device-roles/add/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url) 
         role_data = {
             'color': color_map[type],
             'name': role_name,
-            'slug': role_name,
-            'csrfmiddlewaretoken': r.cookies['csrftoken']
+            'slug': role_name
         }
         log.info('creating new role for type ' + type)
-        r = self.__session.post(url, data=role_data, \
-            headers={'Content-Type': 'application/x-www-form-urlencoded', \
-                     'X-CSRFToken': r.cookies['csrftoken']})
-        r.raise_for_status()
+        self.__.post('/dcim/device-roles/add/', data=role_data)
         Dcim().device_role_list_get()
         for role in self.__get_data():
             if role_name == role.get('name'):
@@ -107,19 +130,12 @@ class Netbox(object):
         for type in self.__get_data():
             if type_name == type.get('name'):
                 return type
-        url = 'http://{0}:{1}/dcim/device-roles/add/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url)
         role_data = {
             'name': type_name,
-            'slug': type_name,
-            'csrfmiddlewaretoken': r.cookies['csrftoken']
+            'slug': type_name
         }
         log.info('creating new role for type ' + type)
-        r = self.__session.post(url, data=role_data, \
-            headers={'Content-Type': 'application/x-www-form-urlencoded', \
-                     'X-CSRFToken': r.cookies['csrftoken']})
-        r.raise_for_status()
+        r = self.__.post('/dcim/device-roles/add/', data=role_data)
         Dcim().device_type_list_get()
         for type in self.__get_data():
             if type_name == type.get('name'):
@@ -130,58 +146,16 @@ class Netbox(object):
         for mfg in self.__get_data():
             if mfg_name == mfg.get('name'):
                 return mfg
-        url = 'http://{0}:{1}/dcim/manufacturers/add/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url)
         mfg_data = {
             'name': mfg_name,
-            'slug': mfg_name,
-            'csrfmiddlewaretoken': r.cookies['csrftoken']
+            'slug': mfg_name
         }
         log.info('creating new mfg for ' + mfg_name)
-        r = self.__session.post(url, data=role_data, \
-            headers={'Content-Type': 'application/x-www-form-urlencoded', \
-                     'X-CSRFToken': r.cookies['csrftoken']})
-        r.raise_for_status()
+        r = self.__.post('/dcim/manufacturers/add/', data=mfg_data)
         Dcim().manufacturer_list_get()
         for mfg in self.__get_data():
             if mfg_name == mfg.get('name'):
                 return mfg
-
-    def nb_add_rack(self, rack_srv):
-        rack_name = re.search('uuid:(.*)::', rack_srv.usn).group(1)
-        if rack_name in self.__rack_info:
-            return
-        log.debug('creating rack with location {0}'.format(rack_srv.location))
-        Dcim().rack_list_get()
-        for rack in self.__get_data():
-            if rack.get('name') == rack_name:
-                log.debug('rack ' + rack_name + ' exists')
-                if not rack_name in self.__rack_info:
-                    self.__rack_info[rack_name] = rack_srv
-                return rack
-        url = 'http://{0}:{1}/dcim/racks/add/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url)
-        rack_info = {
-            'name': rack_name,
-            'u_height': '42',
-            'width': '19',
-            'site': self.__site_info.get('id'), 
-            'csrfmiddlewaretoken': r.cookies['csrftoken'],
-            'comments': 'RackHD Service: \nlocation: {0} \nUSN: {1}' \
-                .format(rack_srv.location, rack_srv.usn)
-        }
-        log.info('creating rack ' + rack_name)
-        r = self.__session.post(url, data=rack_info, \
-            headers={'Content-Type': 'application/x-www-form-urlencoded', \
-                     'X-CSRFToken': r.cookies['csrftoken']})
-        r.raise_for_status()
-        Dcim().rack_list_get()
-        for rack in self.__get_data():
-            if rack.get('name') == rack_name:
-                self.__rack_info[rack_name] = rack_srv
-                return rack
 
     def nb_add_device(self, device_name):
         Dcim().device_list_get()
@@ -189,22 +163,20 @@ class Netbox(object):
             if device.get('name') == device_name:
                 log.debug('node ' + device_name + ' exists')
                 return device
-        url = 'http://{0}:{1}/dcim/nodes/add/' \
-            .format(defaults.get('NETBOX_HOST'), defaults.get('NETBOX_PORT'))
-        r = self.__session.get(url)
         device_info = {
             'name': device_name,
-            'csrfmiddlewaretoken': r.cookies['csrftoken'],
             'comments': 'RackHD Service: \nlocation: {0} \nUSN: {1}' \
                 .format(rack_srv.location, rack_srv.usn)
         }
         log.info('creating device ' + device_name)
-        r = self.__session.post(url, data=device_info, \
-            headers={'Content-Type': 'application/x-www-form-urlencoded', \
-                     'X-CSRFToken': r.cookies['csrftoken']})
-        r.raise_for_status()
+        r = self.__session.post('/dcim/nodes/add/', data=device_info)
         Dcim().device_list_get()
         for device in self.__get_data():
             if device.get('name') == device_name:
                 return device
 
+    def rack_info(self):
+        return self.__rack_info
+        
+    def site_info(self):
+        return self._site_info

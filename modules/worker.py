@@ -60,8 +60,7 @@ class WorkerTasks(object):
 				
     def __run(self):
         for task in self.__tasks:
-	        task.thread = Thread(target=self.__func, \
-                                     args=(task.worker,task.id,))
+	        task.thread = Thread(name=id, target=self.__func, args=(task.worker,task.id,))
 	        task.thread.daemon = self.__daemon
 	        task.start_time = time.mktime(datetime.now().timetuple())
 	        task.running = True
