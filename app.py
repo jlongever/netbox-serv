@@ -36,12 +36,31 @@ def ssdp_listener(nb):
     add_worker(worker,task,'ssdp')
     worker.run()
 
-def rack_device_init(rack_srv):
+def rack_device_init(nb, rack_srv):
     url = rack_srv.location
     log.info('initializing new rack @ ' + url)
     r = requests.get(url + 'nodes/')
-    log.info(r.json(), json=True)
-    return r
+    for node in r.json():
+        if 'type' in node and 'id' in node:
+            type = node.get('type')
+            id = node.get('id')
+            nb.nb_add_device_role(type)
+            if type == 'compute':
+                r = requests.get(url + 'nodes/' + id + '/catalogs/ohai')
+                ohai = r.json().get('data', None)
+                if ohai != None:
+                    mfg_name = ohai['dmi']['system'].get('manufacturer', 'unknown')
+                    model = ohai['dmi']['system'].get('product_name', 'unknown')
+                    sku = ohai['dmi']['system'].get('sku_number', 'unknown')
+                    length = ohai['dmi']['chassis'].get('length', 'unknown')
+                    height = ohai['dmi']['chassis'].get('height', 'unknown')
+                    nb.nb_add_device_mfg(mfg_name)
+                    nb.nb_add_device_type(mfg_name=mfg_name, \
+                        model=model, pn=sku, height=height, length=length, type=type)
+            if type == 'switch':
+                log.info(node, json=True)
+            if type == 'pdu':
+                pass
     
 def rack_device_listener(nb):
     def start(data, id):
@@ -51,7 +70,7 @@ def rack_device_listener(nb):
             new_rack_set = Set(current_rack_set.keys()) - Set(last_rack_set.keys())
             if len(new_rack_set) > 0:
                 for rack_srv in new_rack_set:
-                    rack_device_init(current_rack_set[rack_srv])   
+                    rack_device_init(nb, current_rack_set[rack_srv])   
                 last_rack_set = copy.deepcopy(current_rack_set)
             time.sleep(2)
     task = WorkerThread(None,'device_listener')

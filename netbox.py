@@ -10,6 +10,16 @@ import sys, json, time
 import requests, re
 
 log = Log(__name__)
+ROLE_COLOR_MAP = {
+    'compute': 'blue',
+    'switch': 'green',
+    'enclosure': 'orange',
+    'pdu': 'red'
+}
+def sanitize_slug(str):
+    for c in ['.','#','+','?','$','%','!','@','\\','/','\"']:
+        str = str.replace(c, '')
+    return str.replace(' ', '-').lower()
 
 class Netbox(object):
     def __init__(self, *args, **kwargs):
@@ -53,11 +63,11 @@ class Netbox(object):
         Dcim().site_list_get()
         for site in self.__get_data():
             if site.get('name') == site_name:
-                log.debug('site ' + site_name + ' exists')
+                log.info('site ' + site_name + ' exists')
                 return site
         site_data = {
             'name': site_name,
-            'slug': opts.slug if opts.slug != None else site_name,
+            'slug': opts.slug,
             'asn': opts.asn if opts.asn != None else '',
             'comments': opts.comments if opts.comments != None else '',
             'facility': opts.facility if opts.facility != None else '',
@@ -65,6 +75,8 @@ class Netbox(object):
             'shipping_address': opts.shipping if opts.shipping != None else '',
             'tenant': opts.tenant if opts.tenant != None else '',
         }
+        if site_data['slug'] == None:
+            site_data['slug'] = sanitize_slug(site_name)
         log.info('creating site ' + site_name)
         self.__post('/dcim/sites/add/', data=site_data)
         Dcim().site_list_get()
@@ -102,56 +114,77 @@ class Netbox(object):
                 self.__rack_info[rack_name] = rack_srv
                 return rack
 
-    def nb_add_device_role(self, role_name):
-        colors_map = {
-            'compute': 'blue',
-            'switch': 'green',
-            'enclosure': 'orange',
-            'pdu': 'red'
-        }
+    def nb_add_device_role(self, type):
         Dcim().device_role_list_get()
         for role in self.__get_data():
-            if role_name == role.get('name'):
+            if type == role.get('name'):
+                log.debug('role ' + type + ' exists')
                 return role
         role_data = {
-            'color': color_map[type],
-            'name': role_name,
-            'slug': role_name
+            'color': ROLE_COLOR_MAP[type],
+            'name': type,
+            'slug': sanitize_slug(type)
         }
         log.info('creating new role for type ' + type)
-        self.__.post('/dcim/device-roles/add/', data=role_data)
+        self.__post('/dcim/device-roles/add/', data=role_data)
         Dcim().device_role_list_get()
         for role in self.__get_data():
-            if role_name == role.get('name'):
+            if type == role.get('name'):
                 return role
 
-    def nb_add_device_type(self, mfg_name, model_name):
+    def nb_add_device_type(self, **kwargs):
+        mfg_name = kwargs.get('mfg_name')
+        model = kwargs.get('model')
+        height = kwargs.get('height')
+        length = kwargs.get('length')
+        type = kwargs.get('type')
+        pn = kwargs.get('pn')
         Dcim().device_type_list_get()
         for type in self.__get_data():
-            if type_name == type.get('name'):
+            if mfg_name == type.get('manufacturer') and \
+               model == type.get('model') and \
+               pn == type('part_number'):
                 return type
-        role_data = {
-            'name': type_name,
-            'slug': type_name
-        }
-        log.info('creating new role for type ' + type)
-        r = self.__.post('/dcim/device-roles/add/', data=role_data)
+        Dcim().manufacturer_list_get()
+        for mfg in self.__get_data():
+            if mfg_name == mfg.get('name'):
+                try: # create a valid unit height 
+                    val = [int(s) for s in height.split() if s.isdigit()]
+                    height = int(height[0])
+                except ValueError, IndexError:
+                    log.warning('unit height: ' + height)
+                    height = 1
+                type_data = {
+                    'manufacturer': mfg.get('id'),
+                    'part_number': pn,
+                    'model': model,
+                    'slug': sanitize_slug(model),
+                    'u_height': height
+                }
+                if type == 'switch':
+                    type_data['is_network_device'] = 'on'
+                if length != 'Short': 
+                    type_data['is_full_depth'] = 'on'
+                log.info('creating device type for model: {0}, sku: {1}, mfg: {2}' \
+                    .format(model, pn, mfg_name))
+                r = self.__post('/dcim/device-types/add/', data=type_data)
         Dcim().device_type_list_get()
         for type in self.__get_data():
-            if type_name == type.get('name'):
+            if mfg_name == type.get('manufacturer'):
                 return type
 
     def nb_add_device_mfg(self, mfg_name):
         Dcim().manufacturer_list_get()
         for mfg in self.__get_data():
             if mfg_name == mfg.get('name'):
+                log.debug('manufacturer ' + mfg_name + ' exists')
                 return mfg
         mfg_data = {
             'name': mfg_name,
-            'slug': mfg_name
+            'slug': sanitize_slug(mfg_name)
         }
         log.info('creating new mfg for ' + mfg_name)
-        r = self.__.post('/dcim/manufacturers/add/', data=mfg_data)
+        r = self.__post('/dcim/manufacturers/add/', data=mfg_data)
         Dcim().manufacturer_list_get()
         for mfg in self.__get_data():
             if mfg_name == mfg.get('name'):
@@ -169,7 +202,7 @@ class Netbox(object):
                 .format(rack_srv.location, rack_srv.usn)
         }
         log.info('creating device ' + device_name)
-        r = self.__session.post('/dcim/nodes/add/', data=device_info)
+        r = self.__post('/dcim/nodes/add/', data=device_info)
         Dcim().device_list_get()
         for device in self.__get_data():
             if device.get('name') == device_name:
