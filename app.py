@@ -38,7 +38,7 @@ def ssdp_listener(nb):
 
 def rack_device_init(nb, rack_srv):
     url = rack_srv.location
-    log.info('initializing new rack @ ' + url)
+    log.info('initializing rack devices @ ' + url)
     r = requests.get(url + 'nodes/')
     for node in r.json():
         if 'type' in node and 'id' in node:
@@ -58,7 +58,14 @@ def rack_device_init(nb, rack_srv):
                     nb.nb_add_device_type(mfg_name=mfg_name, \
                         model=model, pn=sku, height=height, length=length, type=type)
             if type == 'switch':
-                log.info(node, json=True)
+                r = requests.get(url + 'nodes/' + id + '/catalogs/snmp-1')
+                snmp = r.json().get('data', None)
+                if any(key.startswith('ENTITY-MIB') for key in snmp):
+                    mfg_name = snmp['ENTITY-MIB::entPhysicalMfgName_10']
+                    model = snmp['ENTITY-MIB::entPhysicalModelName_10']
+                    nb.nb_add_device_mfg(mfg_name)
+                    nb.nb_add_device_type(mfg_name=mfg_name, \
+                        model=model, pn=model, height='1', length='Short', type=type)
             if type == 'pdu':
                 pass
     

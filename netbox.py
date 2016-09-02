@@ -17,7 +17,7 @@ ROLE_COLOR_MAP = {
     'pdu': 'red'
 }
 def sanitize_slug(str):
-    for c in ['.','#','+','?','$','%','!','@','\\','/','\"']:
+    for c in ['.',',','#','+','?','$','%','!','@','\\','/','\"']:
         str = str.replace(c, '')
     return str.replace(' ', '-').lower()
 
@@ -137,7 +137,7 @@ class Netbox(object):
         model = kwargs.get('model')
         height = kwargs.get('height')
         length = kwargs.get('length')
-        type = kwargs.get('type')
+        node_type = kwargs.get('type')
         pn = kwargs.get('pn')
         Dcim().device_type_list_get()
         for type in self.__get_data():
@@ -161,7 +161,7 @@ class Netbox(object):
                     'slug': sanitize_slug(model),
                     'u_height': height
                 }
-                if type == 'switch':
+                if node_type == 'switch':
                     type_data['is_network_device'] = 'on'
                 if length != 'Short': 
                     type_data['is_full_depth'] = 'on'
