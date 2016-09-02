@@ -50,13 +50,13 @@ class WorkerTasks(object):
             time.sleep(1)
 
     def __stop(self, task):
-        LOG.info('stopping subtask for {0}'.format(task.id))
+        LOG.info('stopping worker for {0}'.format(task.id))
         task.running = False
         task.thread.join()
         try:
             self.__tasks.remove(task)
         except IndexError:
-            LOG.error('index error while removing subtask from list!')
+            LOG.error('index error while removing worker from list!')
 				
     def __run(self):
         for task in self.__tasks:

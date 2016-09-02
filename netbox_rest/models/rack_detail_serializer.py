@@ -295,7 +295,7 @@ class RackDetailSerializer(object):
         :param type: The type of this RackDetailSerializer.
         :type: int
         """
-        allowed_values = ["100", "200", "300", "1000", "1100"]
+        allowed_values = ["100", "200", "300", "1000", "1100", None ]
         if type not in allowed_values:
             raise ValueError(
                 "Invalid value for `type` ({0}), must be one of {1}"
@@ -324,7 +324,7 @@ class RackDetailSerializer(object):
         :param width: The width of this RackDetailSerializer.
         :type: int
         """
-        allowed_values = ["19", "23"]
+        allowed_values = ["19", "23", 19, 23]
         if width not in allowed_values:
             raise ValueError(
                 "Invalid value for `width` ({0}), must be one of {1}"

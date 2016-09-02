@@ -1,8 +1,6 @@
 from kombu import Exchange, Queue
 from settings import defaults
 
-AMQP_URL = defaults['RACKHD_AMQP_URL']
-
 # Task exchange queues
 EXCHANGE_TASK           = Exchange('on.task', type='topic')
 QUEUE_SEL_RESULT        = Queue('ipmi.command.sel.result',

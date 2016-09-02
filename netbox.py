@@ -57,7 +57,26 @@ class Netbox(object):
         data['username'] = defaults.get('NETBOX_USER')
         data['password'] = defaults.get('NETBOX_PASS')
         self.__post('/login/', data=data)
-
+        
+    def __next_rack_slot(self, name, height):
+        u_list = []
+        Dcim().rack_list_get_0(self.__site_info.get('id'))
+        for rack in self.__get_data():
+            if rack.get('name') == name:
+                Dcim().rack_detail_get(rack.get('id'))
+                rack_details = self.__get_data()
+                front_units = rack_details.get('front_units', [])
+                for index in reversed(xrange(len(front_units))):
+                    slot = front_units[index]
+                    if slot.get('device') == None:
+                        u_list.append(slot)
+                        if len(u_list) == height:
+                            return u_list
+                    if index % height == 0:
+                        del u_list[:]
+        if len(u_list) < height:
+            raise Exception('insufficient slots available!')
+        
     def nb_create_site(self, opts):
         site_name = opts.site
         Dcim().site_list_get()
@@ -67,7 +86,7 @@ class Netbox(object):
                 return site
         site_data = {
             'name': site_name,
-            'slug': opts.slug,
+            'slug': sanitize_slug(opts.slug),
             'asn': opts.asn if opts.asn != None else '',
             'comments': opts.comments if opts.comments != None else '',
             'facility': opts.facility if opts.facility != None else '',
@@ -89,8 +108,7 @@ class Netbox(object):
     def nb_add_rack(self, rack_srv):
         rack_name = re.search('uuid:(.*)::', rack_srv.usn).group(1)
         if rack_name in self.__rack_info:
-            return
-        log.debug('creating rack with location {0}'.format(rack_srv.location))
+            return self.__rack_info[rack_name]
         Dcim().rack_list_get_0(self.__site_info.get('id'))
         add_rack = True
         for rack in self.__get_data():
@@ -98,10 +116,11 @@ class Netbox(object):
                 log.debug('rack ' + rack_name + ' exists')
                 add_rack = False
         if add_rack:
+            log.info('creating rack with location {0}'.format(rack_srv.location))           
             rack_info = {
                 'name': rack_name,
-                'u_height': '42',
-                'width': '19',
+                'u_height': 42,
+                'width': 19,
                 'site': self.__site_info.get('id'), 
                 'comments': 'RackHD Service: \nlocation: {0} \nUSN: {1}' \
                     .format(rack_srv.location, rack_srv.usn)
@@ -111,7 +130,10 @@ class Netbox(object):
         Dcim().rack_list_get()
         for rack in self.__get_data():
             if rack.get('name') == rack_name:
-                self.__rack_info[rack_name] = rack_srv
+                self.__rack_info[rack_name] = {
+                    'service': rack_srv,
+                    'rack': rack
+                }
                 return rack
 
     def nb_add_device_role(self, type):
@@ -141,9 +163,8 @@ class Netbox(object):
         pn = kwargs.get('pn')
         Dcim().device_type_list_get()
         for type in self.__get_data():
-            if mfg_name == type.get('manufacturer') and \
-               model == type.get('model') and \
-               pn == type('part_number'):
+            if mfg_name == type.get('manufacturer').get('name') and \
+               model == type.get('model') and pn == type.get('part_number'):
                 return type
         Dcim().manufacturer_list_get()
         for mfg in self.__get_data():
@@ -190,22 +211,36 @@ class Netbox(object):
             if mfg_name == mfg.get('name'):
                 return mfg
 
-    def nb_add_device(self, device_name):
-        Dcim().device_list_get()
-        for device in self.__get_data():
-            if device.get('name') == device_name:
-                log.debug('node ' + device_name + ' exists')
-                return device
+    def nb_add_device(self, **kwargs):
+        device_role = kwargs.get('device_role')
+        device_type = kwargs.get('device_type')
+        device_mfg = kwargs.get('device_mfg')
+        serial_number = kwargs.get('serial', '')
+        face = kwargs.get('face', 0)
+        rack_srv = kwargs.get('rack_srv')
+        site_name = self.__site_info.get('name')
+        rack_name = re.search('uuid:(.*)::', rack_srv .usn).group(1)
+        height = device_type.get('u_height')
+        slot = self.__next_rack_slot(rack_name, height)[0]
+        name = '{0}({1}-{2})' \
+            .format(device_type.get('model'), rack_name.split('-')[4][1::2], slot.get('id'))
         device_info = {
-            'name': device_name,
-            'comments': 'RackHD Service: \nlocation: {0} \nUSN: {1}' \
-                .format(rack_srv.location, rack_srv.usn)
+            'name': name,
+            'device_type': device_type.get('id'),
+            'device_role': device_role.get('id'),
+            'manufacturer': device_mfg.get('id'),
+            'site': self.__site_info.get('id'),
+            'position': slot.get('id'),
+            'status': 'True',
+            'serial': serial_number,
+            'face': face,
+            'rack': self.__rack_info[rack_name]['rack'].get('id')
         }
-        log.info('creating device ' + device_name)
-        r = self.__post('/dcim/nodes/add/', data=device_info)
+        log.info('creating device ' + name)
+        r = self.__post('/dcim/devices/add/', data=device_info)
         Dcim().device_list_get()
         for device in self.__get_data():
-            if device.get('name') == device_name:
+            if device.get('name') == name:
                 return device
 
     def rack_info(self):

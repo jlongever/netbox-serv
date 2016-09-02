@@ -12,9 +12,6 @@ defaults = {}
 for k,v in config_parser.items('DEFAULT'):
     defaults[k.upper()] = v
 
-RACKHD_HOST = defaults['RACKHD_HOST']
-RACKHD_PORT = defaults['RACKHD_PORT']
-RACKHD_PORT_AUTH = defaults['RACKHD_PORT_AUTH']
 NETBOX_HOST = defaults['NETBOX_HOST']
 NETBOX_PORT = defaults['NETBOX_PORT']
 NETBOX_PORT_AUTH = defaults['NETBOX_PORT_AUTH']
