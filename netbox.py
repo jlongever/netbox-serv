@@ -247,4 +247,4 @@ class Netbox(object):
         return self.__rack_info
         
     def site_info(self):
-        return self._site_info
+        return self.__site_info
