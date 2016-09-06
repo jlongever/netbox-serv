@@ -90,19 +90,19 @@ def device_listener(nb, rack_srv):
         amqp.start()
             
     def handler_cb(body, message):
-        routeId = message.delivery_info.get('routing_key').split('graph.finished.')[1]
         r = requests.get(rack_srv.location + 'workflows')
         workflows = r.json()
-        for w in workflows:
-            definition = w['definition']
+        for work in workflows:
+            definition = work.get('definition', {})
             injectableName = definition.get('injectableName')
             if injectableName == 'Graph.SKU.Discovery':
-                graphId = w['context'].get('graphId')
+                routeId = message.delivery_info.get('routing_key').split('graph.finished.')[1]
+                graphId = work.get('context', {}).get('graphId')
                 if graphId == routeId:
                     status = body.get('status')
                     if status == 'succeeded':
                         options = definition.get('options')
-                        nodeid = options['defaults'].get('nodeId')
+                        nodeid = options.get('defaults', {}).get('nodeId')
                         r = requests.get(rack_srv.location + 'nodes/' + nodeid)
                         add_rack_node(nb, r.json(), rack_srv)
                         message.ack()        

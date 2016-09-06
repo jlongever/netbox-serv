@@ -20,11 +20,12 @@ Class to abstract AMQP consumer event handling
 """
 class AMQPWorker(ConsumerMixin):
     def __init__(self, **kwargs):
-        self.__callbacks = kwargs.get('callbacks',self.on_message)
-        self.__amqp_url = kwargs.get('amqp_url',AMQP_URL)
+        self.__callbacks = kwargs.get('callbacks', self.on_message)
+        self.__amqp_url = kwargs.get('amqp_url')
         self.__queue = kwargs.get('queue')
-        self.__max_retries = kwargs.get('max_retries',2)
-        self.__max_error = kwargs.get('max_error',3)
+        self.__max_retries = kwargs.get('max_retries', 2)
+        if self.__amqp_url == None:
+            raise Exception('missing required AMQP address')
         if self.__queue is None:
             raise TypeError('invalid worker queue parameter')
         self.connection = BrokerConnection(self.__amqp_url)
@@ -46,15 +47,12 @@ class AMQPWorker(ConsumerMixin):
         message.ack()
 
     def on_conn_retry(self):
-        LOG.error('Retrying connection for {0}'.format(self.__amqp_url))
+        LOG.warning('Connection retry on {0}' \
+            .format(self.__amqp_url))
 
     def on_connection_error(self, exc, interval):
-        if self.__max_error:
-            LOG.warning('Connection error, retrying in {0} seconds (retry={1})'.format(interval, self.__max_error))
-            self.__max_error -= 1
-        else:
-            LOG.error('max connection errors exceeded.')
-            stop()
+        LOG.error('Connection error on {0} (interval={1})' \
+            .format(self.__amqp_url, interval))
 
     def start(self):
         LOG.info('Starting AMQP worker {0}'.format(self.__queue))
