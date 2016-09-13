@@ -51,7 +51,7 @@ class AMQPWorker(ConsumerMixin):
             .format(self.__amqp_url))
 
     def on_connection_error(self, exc, interval):
-        LOG.error('Connection error on {0} (interval={1})' \
+        LOG.error('Connection error on {0} (interval={1}s)' \
             .format(self.__amqp_url, interval))
 
     def start(self):

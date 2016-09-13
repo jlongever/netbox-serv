@@ -42,4 +42,23 @@ The `--site` argument is required.
 Netbox-serv will start, create a netbox site and discover all running RackHD services advertising on the network. 
 For each RackHD service a corresponding netbox rack will be created. Each rack will be populated with existing nodes 
 (switches, compute, pdu) and spawn AMQP listeners to listen/add new discovered nodes.
+
+## Configuration
+
+- Service options can be changed by modifying the `config/config.ini` (or specifying a custom config.ini using the `--config` option).
+
+```
+LOGLEVEL = WARNING
+NETBOX_HOST = localhost
+NETBOX_PORT = 80
+NETBOX_PORT_AUTH = 443
+NETBOX_USER = admin
+NETBOX_PASS = admin
+NETBOX_VERIFY_SSL = False
+NETBOX_DEBUG = False
+```
+
+`python app.py --config=/home/me/myconfig.ini`
+
+
  
