@@ -64,6 +64,7 @@ def add_rack_node(nb, node, rack_srv):
                 dev = nb.nb_add_device(device_role=dev_role, \
                     device_type=dev_type, device_mfg=dev_mfg, rack_srv=rack_srv)
         if type == 'pdu':
+            # TODO
             pass    
 
 def service_listener(nb):
@@ -124,7 +125,11 @@ def rack_listener(nb):
                     rack = current_rack_set[rack_srv]['service']
                     r = requests.get(rack.location + 'nodes/')
                     for node in r.json():
-                        add_rack_node(nb, node, rack)
+                        try: 
+                            add_rack_node(nb, node, rack)
+                        except Exception as e:
+                            log.error('Rack {0} Exception: {1}'.format(rack_srv, e.message))
+                            pass
                     device_listener(nb, rack)  
                 last_rack_set = copy.deepcopy(current_rack_set)
             time.sleep(2)
