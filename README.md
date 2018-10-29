@@ -60,7 +60,3 @@ NETBOX_DEBUG = False
 
 `python app.py --config=/home/me/myconfig.ini`
 
-
-
-
- 
