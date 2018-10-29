@@ -9,6 +9,8 @@ from netbox_rest import ApitenancyApi as Tenancy
 import sys, json, time
 import requests, re
 
+import os
+
 log = Log(__name__)
 ROLE_COLOR_MAP = {
     'compute': 'blue',
