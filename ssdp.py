@@ -15,6 +15,7 @@
 import socket
 import httplib
 import StringIO
+import re, os
 
 class SSDPResponse(object):
     class _FakeSocket(StringIO.StringIO):
