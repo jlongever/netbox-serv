@@ -153,6 +153,7 @@ def parse_arguments():
     return args
 
 if __name__ == '__main__':
+    log.debug("Starting " + __name__)
     options = parse_arguments()
     nb = Netbox(options)
     service_listener(nb)
